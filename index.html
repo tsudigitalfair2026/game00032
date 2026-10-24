@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>わにたたきDX</title>
+
+<style>
+*{
+box-sizing:border-box;
+-webkit-tap-highlight-color:transparent;
+}
+
+html,body{
+margin:0;
+width:100%;
+height:100%;
+overflow:hidden;
+font-family:sans-serif;
+touch-action:none;
+background:linear-gradient(#7ed6ff,#b8f5ff);
+}
+
+.screen{
+width:100%;
+height:100vh;
+display:none;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+padding:16px;
+text-align:center;
+}
+
+.active{
+display:flex;
+}
+
+h1{
+margin:8px 0;
+font-size:clamp(30px,7vw,48px);
+}
+
+button{
+border:none;
+border-radius:18px;
+padding:16px 30px;
+font-size:20px;
+font-weight:bold;
+background:#ff9800;
+color:white;
+min-width:200px;
+min-height:64px;
+cursor:pointer;
+box-shadow:0 4px 0 #d66c00;
+}
+
+button:active{
+transform:translateY(2px);
+}
+
+#gameScreen{
+justify-content:flex-start;
+position:relative;
+}
+
+.topbar{
+width:100%;
+display:flex;
+justify-content:space-between;
+padding:10px;
+font-size:22px;
+font-weight:bold;
+}
+
+#gameArea{
+width:100%;
+max-width:520px;
+flex:1;
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:10px;
+padding:10px;
+align-content:center;
+}
+
+.hole{
+background:#6b3f18;
+border-radius:50%;
+aspect-ratio:1/1;
+position:relative;
+overflow:hidden;
+box-shadow:inset 0 8px 0 rgba(0,0,0,.25);
+}
+
+.wani{
+position:absolute;
+left:50%;
+bottom:-100%;
+transform:translateX(-50%);
+font-size:min(16vw,72px);
+transition:bottom .15s;
+user-select:none;
+cursor:pointer;
+}
+
+.wani.show{
+bottom:5%;
+}
+
+.rank{
+font-size:38px;
+font-weight:bold;
+color:#e91e63;
+margin:12px;
+}
+
+#effect{
+position:fixed;
+left:0;
+top:0;
+width:100%;
+height:100%;
+pointer-events:none;
+overflow:hidden;
+}
+
+.star{
+position:absolute;
+font-size:32px;
+animation:pop .8s forwards;
+}
+
+@keyframes pop{
+0%{
+transform:scale(.5);
+opacity:1;
+}
+100%{
+transform:translateY(-100px) scale(2);
+opacity:0;
+}
+}
+
+#fever{
+position:absolute;
+left:50%;
+top:50%;
+transform:translate(-50%,-50%);
+font-size:min(12vw,64px);
+font-weight:bold;
+color:#ffeb3b;
+text-shadow:
+0 0 10px #ff0000,
+0 0 20px #ff0000,
+0 0 30px #ff0000;
+display:none;
+animation:flash .6s infinite;
+pointer-events:none;
+}
+
+@keyframes flash{
+50%{
+transform:translate(-50%,-50%) scale(1.15);
+}
+}
+
+#combo{
+font-size:20px;
+color:#d50000;
+font-weight:bold;
+height:28px;
+}
+
+#countdown{
+position:fixed;
+inset:0;
+display:none;
+align-items:center;
+justify-content:center;
+font-size:min(30vw,180px);
+font-weight:bold;
+color:white;
+background:rgba(0,0,0,.5);
+z-index:100;
+}
+
+.burst{
+animation:burst .25s;
+}
+
+@keyframes burst{
+0%{transform:translateX(-50%) scale(1);}
+50%{transform:translateX(-50%) scale(1.4);}
+100%{transform:translateX(-50%) scale(1);}
+}
+</style>
+</head>
+
+<body>
+
+<div id="startScreen" class="screen active">
+<h1>🐊 わにたたきDX 🐊</h1>
+<p>
+出てきたわにをタップ！<br>
+連続成功でフィーバー発動！<br>
+60秒で高得点を目指そう！
+</p>
+<button id="startBtn">スタート</button>
+</div>
+
+<div id="gameScreen" class="screen">
+
+<div class="topbar">
+<div>スコア: <span id="score">0</span></div>
+<div>残り: <span id="time">60</span>秒</div>
+</div>
+
+<div id="combo"></div>
+
+<div id="gameArea"></div>
+
+<div id="fever">🔥 FEVER 🔥</div>
+
+</div>
+
+<div id="resultScreen" class="screen">
+<h1>結果発表</h1>
+
+<div style="font-size:48px;font-weight:bold;" id="finalScore">0</div>
+
+<div class="rank" id="rank">C</div>
+
+<button id="restartBtn">もう一度遊ぶ</button>
+</div>
+
+<div id="effect"></div>
+<div id="countdown"></div>
+
+<script>
+
+const startScreen=document.getElementById("startScreen");
+const gameScreen=document.getElementById("gameScreen");
+const resultScreen=document.getElementById("resultScreen");
+
+const scoreEl=document.getElementById("score");
+const timeEl=document.getElementById("time");
+const finalScoreEl=document.getElementById("finalScore");
+const rankEl=document.getElementById("rank");
+const comboEl=document.getElementById("combo");
+const feverEl=document.getElementById("fever");
+const effect=document.getElementById("effect");
+const countdown=document.getElementById("countdown");
+
+let score=0;
+let timeLeft=60;
+let gameTimer;
+let waniTimer;
+let currentWani=null;
+
+let combo=0;
+let fever=false;
+let feverTimeout;
+
+const gameArea=document.getElementById("gameArea");
+
+for(let i=0;i<9;i++){
+
+const hole=document.createElement("div");
+hole.className="hole";
+
+const wani=document.createElement("div");
+wani.className="wani";
+wani.textContent="🐊";
+
+wani.addEventListener("pointerdown",()=>{
+
+if(!wani.classList.contains("show")) return;
+
+wani.classList.remove("show");
+
+combo++;
+
+let addPoint=fever?2:1;
+score+=addPoint;
+
+scoreEl.textContent=score;
+
+showHitEffect(wani);
+
+if(combo>=10 && !fever){
+startFever();
+}
+
+comboEl.textContent="コンボ × " + combo;
+
+currentWani=null;
+
+});
+
+hole.appendChild(wani);
+gameArea.appendChild(hole);
+}
+
+const wanis=[...document.querySelectorAll(".wani")];
+
+function showScreen(screen){
+[startScreen,gameScreen,resultScreen].forEach(s=>s.classList.remove("active"));
+screen.classList.add("active");
+}
+
+function showHitEffect(target){
+
+const rect=target.getBoundingClientRect();
+
+const star=document.createElement("div");
+star.className="star";
+star.textContent="✨";
+star.style.left=(rect.left+rect.width/2-16)+"px";
+star.style.top=(rect.top)+"px";
+
+effect.appendChild(star);
+
+setTimeout(()=>star.remove(),800);
+}
+
+function popWani(){
+
+if(currentWani){
+currentWani.classList.remove("show");
+combo=0;
+comboEl.textContent="";
+}
+
+const idx=Math.floor(Math.random()*wanis.length);
+
+currentWani=wanis[idx];
+currentWani.classList.add("show");
+
+setTimeout(()=>{
+if(currentWani===wanis[idx]){
+currentWani.classList.remove("show");
+currentWani=null;
+combo=0;
+comboEl.textContent="";
+}
+},850);
+}
+
+function startFever(){
+
+fever=true;
+
+feverEl.style.display="block";
+
+feverEl.classList.add("burst");
+
+setTimeout(()=>{
+feverEl.classList.remove("burst");
+},300);
+
+clearTimeout(feverTimeout);
+
+feverTimeout=setTimeout(()=>{
+fever=false;
+feverEl.style.display="none";
+},5000);
+}
+
+function getRank(score){
+
+if(score>=90) return "Sランク";
+if(score>=70) return "Aランク";
+if(score>=45) return "Bランク";
+return "Cランク";
+
+}
+
+function endGame(){
+
+clearInterval(gameTimer);
+clearInterval(waniTimer);
+
+wanis.forEach(w=>w.classList.remove("show"));
+
+finalScoreEl.textContent=score;
+rankEl.textContent=getRank(score);
+
+showScreen(resultScreen);
+
+}
+
+function startCountdown(callback){
+
+let n=3;
+
+countdown.style.display="flex";
+countdown.textContent=n;
+
+const timer=setInterval(()=>{
+
+n--;
+
+if(n>0){
+countdown.textContent=n;
+}else if(n===0){
+countdown.textContent="GO!";
+}else{
+clearInterval(timer);
+countdown.style.display="none";
+callback();
+}
+
+},800);
+
+}
+
+function startGame(){
+
+score=0;
+timeLeft=60;
+combo=0;
+fever=false;
+
+scoreEl.textContent="0";
+timeEl.textContent="60";
+comboEl.textContent="";
+feverEl.style.display="none";
+
+showScreen(gameScreen);
+
+startCountdown(()=>{
+
+popWani();
+
+waniTimer=setInterval(popWani,900);
+
+gameTimer=setInterval(()=>{
+
+timeLeft--;
+
+timeEl.textContent=timeLeft;
+
+if(timeLeft<=10){
+timeEl.style.color="red";
+timeEl.style.fontSize="32px";
+}else{
+timeEl.style.color="";
+}
+
+if(timeLeft<=0){
+endGame();
+}
+
+},1000);
+
+});
+
+}
+
+document.getElementById("startBtn").addEventListener("click",startGame);
+document.getElementById("restartBtn").addEventListener("click",startGame);
+
+</script>
+
+</body>
+</html>
